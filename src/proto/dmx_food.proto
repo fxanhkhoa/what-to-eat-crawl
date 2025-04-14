@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package dmx_food;
+
+service DmxFoodService {
+    rpc createDmxFood(stream CreateDmxFoodRequest) returns (stream CreateDmxFoodResponse);
+}
+
+message CreateDmxFoodRequest {
+    string host = 1;
+    string dmx_link = 2;
+    string category = 3;
+    string token = 4;
+}
+
+message CreateDmxFoodResponse {
+    string log = 1;
+}
