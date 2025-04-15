@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Injectable } from '@nestjs/common';
@@ -14,10 +15,12 @@ import {
   WebElement,
 } from 'selenium-webdriver';
 import { IngredientService } from '../ingredient/ingredient.service';
-import { IngredientsInDish } from 'src/types/dish.type';
+import { CreateDishDto, IngredientsInDish } from 'src/types/dish.type';
 import { firstValueFrom } from 'rxjs';
 import slugify from 'slugify';
-import { CreateIngredientDto } from 'src/types/ingredient.type';
+import { CreateIngredientDto, Ingredient } from 'src/types/ingredient.type';
+import { removeVietnameseTones } from 'src/utils/vietnamese.util';
+import { translate } from 'google-translate-api-browser';
 
 @Injectable()
 export class DmxFoodService {
@@ -157,7 +160,22 @@ export class DmxFoodService {
         driver,
         ingredientDiv,
         data,
+        requestStream,
       );
+
+      const dish: CreateDishDto = {
+        title: [],
+        slug: '',
+        shortDescription: [],
+        content: [],
+        tags: [],
+        mealCategories: [],
+        ingredientCategories: [],
+        videos: [],
+        ingredients: [],
+        relatedDishes: [],
+        labels: [],
+      };
     } catch (error) {
       console.log(error);
       requestStream.write({
@@ -170,6 +188,10 @@ export class DmxFoodService {
     driver: WebDriver,
     element: WebElement,
     data: CreateDmxFoodRequest,
+    requestStream: ServerWritableStream<
+      CreateDmxFoodRequest,
+      CreateDmxFoodResponse
+    >,
   ): Promise<IngredientsInDish[]> {
     const ingredients = await element.findElements(By.css('span'));
 
@@ -184,7 +206,7 @@ export class DmxFoodService {
       const quantityArr = quantityText.match(/\d+/);
       let quantity = 0;
       if (quantityArr) {
-        quantity = Number(quantityArr[0]);
+        quantity = parseFloat(quantityArr[0]);
       }
 
       const fullNote = await (await ing.findElement(By.css('em'))).getText();
@@ -200,33 +222,55 @@ export class DmxFoodService {
         this.ingredientService.findByTitleLang(name, 'vi', data.host),
       );
 
-      let foundIngredient = response.data;
+      let foundIngredient: Ingredient = {
+        _id: '',
+        slug: '',
+        title: [],
+        ingredientCategory: [],
+        images: [],
+        deleted: true,
+      };
 
-      if (!foundIngredient) {
+      if (!response) {
         const dto: CreateIngredientDto = {
-          slug: slugify(name, { lower: true }),
+          slug: slugify(removeVietnameseTones(name), { lower: true }),
           title: [
             {
               lang: 'vi',
               data: name,
             },
+            {
+              lang: 'en',
+              data: (await translate(name, { from: 'vi', to: 'en' })).text,
+            },
           ],
           ingredientCategory: [],
           images: [],
         };
-        console.log(dto);
         const res = await firstValueFrom(
           this.ingredientService.create(dto, data.token, data.host),
         );
 
-        console.log(res.data);
+        if (res.data) {
+          foundIngredient = res.data;
+          requestStream.write({
+            log: `Created ingredient: ${name}`,
+          });
+        }
+      } else {
+        foundIngredient = response.data;
+        requestStream.write({
+          log: `Found ingredient: ${name}`,
+        });
       }
 
-      ingredientsInDish.push({
-        quantity,
-        slug: '',
-        note,
-      });
+      if (!foundIngredient.deleted) {
+        ingredientsInDish.push({
+          quantity,
+          slug: foundIngredient.slug,
+          note,
+        });
+      }
     }
 
     return ingredientsInDish;

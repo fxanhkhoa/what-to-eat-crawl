@@ -1,5 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
+import { catchError, of } from 'rxjs';
 import { CreateIngredientDto, Ingredient } from 'src/types/ingredient.type';
 
 @Injectable()
@@ -23,8 +24,10 @@ export class IngredientService {
   }
 
   findByTitleLang(title: string, lang: string, host: string) {
-    return this.http.get<Ingredient>(
-      `${host}/ingredient/byTitleLang?title=${title}&lang=${lang}`,
-    );
+    return this.http
+      .get<Ingredient>(
+        `${host}/ingredient/byTitleLang?title=${title}&lang=${lang}`,
+      )
+      .pipe(catchError(() => of(null)));
   }
 }
